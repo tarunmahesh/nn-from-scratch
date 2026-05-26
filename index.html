@@ -1,0 +1,247 @@
+<!-- index.html -->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MNIST Digit Recognizer</title>
+
+    <style>
+
+        body{
+            background:#050512;
+            color:white;
+            font-family:Arial;
+            padding:30px;
+        }
+
+        .container{
+            display:flex;
+            gap:40px;
+        }
+
+        .left{
+            width:500px;
+        }
+
+        .right{
+            width:400px;
+        }
+
+        canvas{
+            border:2px solid #444;
+            background:black;
+            cursor:crosshair;
+        }
+
+        button{
+            padding:12px 30px;
+            font-size:18px;
+            margin-top:20px;
+            margin-right:10px;
+            cursor:pointer;
+        }
+
+        .prediction{
+            font-size:120px;
+            margin-bottom:10px;
+        }
+
+        .confidence{
+            font-size:24px;
+            margin-bottom:40px;
+        }
+
+        .bar-row{
+            display:flex;
+            align-items:center;
+            margin-bottom:10px;
+        }
+
+        .label{
+            width:30px;
+        }
+
+        .bar{
+            height:20px;
+            background:#7b61ff;
+            margin-left:10px;
+        }
+
+        #miniCanvas{
+            border:1px solid white;
+            image-rendering: pixelated;
+            width:140px;
+            height:140px;
+        }
+
+    </style>
+</head>
+
+<body>
+
+<h2>MNIST Neural Network Demo</h2>
+
+<div class="container">
+
+    <!-- LEFT SIDE -->
+    <div class="left">
+
+        <canvas id="canvas" width="400" height="400"></canvas>
+
+        <br>
+
+        <button onclick="predict()">Predict</button>
+        <button onclick="clearCanvas()">Clear</button>
+
+        <h3>28×28 Input</h3>
+
+        <canvas id="miniCanvas" width="28" height="28"></canvas>
+
+    </div>
+
+
+    <!-- RIGHT SIDE -->
+    <div class="right">
+
+        <div class="prediction" id="prediction">?</div>
+
+        <div class="confidence" id="confidence">
+            Confidence: 0%
+        </div>
+
+        <h3>Confidence Per Class</h3>
+
+        <div id="bars"></div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+ctx.fillStyle = "black";
+ctx.fillRect(0,0,400,400);
+
+let drawing = false;
+
+canvas.addEventListener("mousedown", () => drawing = true);
+canvas.addEventListener("mouseup", () => drawing = false);
+canvas.addEventListener("mouseleave", () => drawing = false);
+
+canvas.addEventListener("mousemove", draw);
+
+
+function draw(e){
+
+    if(!drawing) return;
+
+    const rect = canvas.getBoundingClientRect();
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctx.fillStyle = "white";
+
+    // 18px radius → maps to ~2.5px on 28×28, matching MNIST stroke weight
+    ctx.beginPath();
+    ctx.arc(x,y,18,0,Math.PI*2);
+    ctx.fill();
+}
+
+
+function clearCanvas(){
+
+    ctx.fillStyle = "black";
+    ctx.fillRect(0,0,400,400);
+
+    document.getElementById("prediction").innerText = "?";
+
+    document.getElementById("confidence").innerText =
+        "Confidence: 0%";
+
+    document.getElementById("bars").innerHTML = "";
+}
+
+
+async function predict(){
+
+    const imageData = canvas.toDataURL("image/png");
+
+    const response = await fetch("/predict",{
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body:JSON.stringify({
+            image:imageData
+        })
+    });
+
+    const data = await response.json();
+
+    // Main prediction
+    document.getElementById("prediction").innerText =
+        data.prediction;
+
+    document.getElementById("confidence").innerText =
+        "Confidence: " +
+        (data.confidence * 100).toFixed(1) + "%";
+
+
+    // Probability bars
+    const bars = document.getElementById("bars");
+
+    bars.innerHTML = "";
+
+    for(let i=0;i<10;i++){
+
+        const prob = data.probabilities[i];
+
+        const row = document.createElement("div");
+        row.className = "bar-row";
+
+        row.innerHTML = `
+            <div class="label">${i}</div>
+            <div class="bar"
+                 style="width:${prob * 250}px"></div>
+            <div style="margin-left:10px;">
+                ${(prob * 100).toFixed(1)}%
+            </div>
+        `;
+
+        bars.appendChild(row);
+    }
+
+
+    // Draw 28x28 preview
+    const mini = document.getElementById("miniCanvas");
+    const miniCtx = mini.getContext("2d");
+
+    const imgData = miniCtx.createImageData(28,28);
+
+    for(let y=0;y<28;y++){
+
+        for(let x=0;x<28;x++){
+
+            const val = data.image28[y][x] * 255;
+
+            const idx = (y * 28 + x) * 4;
+
+            imgData.data[idx] = val;
+            imgData.data[idx+1] = val;
+            imgData.data[idx+2] = val;
+            imgData.data[idx+3] = 255;
+        }
+    }
+
+    miniCtx.putImageData(imgData,0,0);
+}
+
+</script>
+
+</body>
+</html>
